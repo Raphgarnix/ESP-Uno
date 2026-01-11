@@ -1489,9 +1489,6 @@ document.addEventListener("DOMContentLoaded", function() {
 </html>
 )rawliteral";
 
-
-
-
 enum BroadcastType {
   BROADCAST_PLAYERS,
   BROADCAST_READY,
@@ -1503,22 +1500,22 @@ enum BroadcastType {
   BROADCAST_RESTART
 };
 
-
-const char* drawDeck[108] = { "0R", "0G", "0B", "0Y", 
-                "1R", "1R", "1G", "1G", "1B", "1B", "1Y", "1Y", 
-                "2R", "2R", "2G", "2G", "2B", "2B", "2Y", "2Y",
-                "3R", "3R", "3G", "3G", "3B", "3B", "3Y", "3Y", 
-                "4R", "4R", "4G", "4G", "4B", "4B", "4Y", "4Y",
-                "5R", "5R", "5G", "5G", "5B", "5B", "5Y", "5Y", 
-                "6R", "6R", "6G", "6G", "6B", "6B", "6Y", "6Y",
-                "7R", "7R", "7G", "7G", "7B", "7B", "7Y", "7Y", 
-                "8R", "8R", "8G", "8G", "8B", "8B", "8Y", "8Y",
-                "9R", "9R", "9G", "9G", "9B", "9B", "9Y", "9Y",
-                "+2R", "+2R", "+2G", "+2G", "+2B", "+2B", "+2Y", "+2Y",
-                "SR", "SR", "SG", "SG", "SB", "SB", "SY", "SY",
-                "RR", "RR", "RG", "RG", "RB", "RB", "RY", "RY",
-                "W", "W", "W", "W",
-                "+4W", "+4W", "+4W", "+4W" };
+const char* drawDeck[108] = { 
+    "0R", "0G", "0B", "0Y", 
+    "1R", "1R", "1G", "1G", "1B", "1B", "1Y", "1Y", 
+    "2R", "2R", "2G", "2G", "2B", "2B", "2Y", "2Y",
+    "3R", "3R", "3G", "3G", "3B", "3B", "3Y", "3Y", 
+    "4R", "4R", "4G", "4G", "4B", "4B", "4Y", "4Y",
+    "5R", "5R", "5G", "5G", "5B", "5B", "5Y", "5Y", 
+    "6R", "6R", "6G", "6G", "6B", "6B", "6Y", "6Y",
+    "7R", "7R", "7G", "7G", "7B", "7B", "7Y", "7Y", 
+    "8R", "8R", "8G", "8G", "8B", "8B", "8Y", "8Y",
+    "9R", "9R", "9G", "9G", "9B", "9B", "9Y", "9Y",
+    "+2R", "+2R", "+2G", "+2G", "+2B", "+2B", "+2Y", "+2Y",
+    "SR", "SR", "SG", "SG", "SB", "SB", "SY", "SY",
+    "RR", "RR", "RG", "RG", "RB", "RB", "RY", "RY",
+    "W", "W", "W", "W",
+    "+4W", "+4W", "+4W", "+4W" };
 uint8_t drawDeckSize = 108;
 
 const char* discardPile[108];
@@ -1549,12 +1546,12 @@ struct Player {
 
 Player players[4];
 uint8_t playerCount = 0;
+
 uint8_t aktuellerSpieler = 0;
 int8_t spielerAmZug = -1;
 bool uhrzeigersinn = true;
 bool letzteKartePlusKarte = false;
 uint8_t aktuelleZiehenAnzahl = 0;
-
 bool gamestarted = false;
 char aktuelleFarbe = 0;
 
@@ -1582,6 +1579,7 @@ void RestartGame();
 
 
 void nextMove() {
+  
   if (uhrzeigersinn) {
     aktuellerSpieler++;
     if (aktuellerSpieler >= playerCount) {
@@ -1598,7 +1596,6 @@ void nextMove() {
   }
   spielerAmZug = aktuellerSpieler;
   updateSpielerZug(spielerAmZug);
-
 }
 
 
@@ -1712,8 +1709,7 @@ void ResetGame() {
   for (uint8_t i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++) {
     webSocket.disconnect(i);
   }
-
-  delay(100); // ESP Zeit geben
+  delay(100);
 
   // ===== Spielstatus =====
   gamestarted = false;
@@ -1748,9 +1744,10 @@ void ResetGame() {
 
 
 void removePlayer(uint8_t index) {
+  
   for (uint8_t i = index; i < playerCount - 1; i++) {
     players[i] = players[i + 1];
-    players[i].number = i; // neu nummerieren
+    players[i].number = i;
   }
   playerCount--;
 }
@@ -1809,7 +1806,6 @@ void RestartGame() {
     players[i].hatPlusKarte = false;
   }
 
-  // ===== Tell clients: back to lobby =====
   StaticJsonDocument<64> doc;
   doc["type"] = "restartLobby";
 
@@ -1817,24 +1813,18 @@ void RestartGame() {
   serializeJson(doc, msg);
   webSocket.broadcastTXT(msg);
 
-  // ===== Update lobby UI =====
   broadcast(BROADCAST_PLAYERS);
   broadcast(BROADCAST_READY);
 }
 
 void sendError(uint8_t socketID, const char* msg) {
+  
   webSocket.sendTXT(socketID, msg);
-    Serial.print("Error for socket ");
-    Serial.print(socketID);
-    Serial.print(": ");
-    Serial.println(msg);
-    webSocket.sendTXT(socketID, msg);
 }
 
 
 void handleSelectCard(uint8_t socketID, StaticJsonDocument<256>& doc) {
 
-  // ===== Spieler finden =====
   int8_t index = -1;
   for (uint8_t i = 0; i < playerCount; i++) {
     if (players[i].socketID == socketID) {
@@ -1844,7 +1834,6 @@ void handleSelectCard(uint8_t socketID, StaticJsonDocument<256>& doc) {
   }
   if (index == -1) return;
 
-  // ===== Zug prüfen =====
   if (spielerAmZug != players[index].number) {
     sendError(socketID, "NotYourTurn");
     return;
@@ -1856,7 +1845,6 @@ void handleSelectCard(uint8_t socketID, StaticJsonDocument<256>& doc) {
     return;
   }
 
-  // ===== Kartenindex prüfen =====
   if (!doc["cardIndex"].is<int>()) {
     sendError(socketID, "InvalidCard");
     return;
@@ -1871,7 +1859,6 @@ void handleSelectCard(uint8_t socketID, StaticJsonDocument<256>& doc) {
   const char* playedCard = players[index].hand[cardIndex];
   JsonVariant wishVar = doc["wish"];
 
-  // ===== +2 / +4 Regeln prüfen =====
   if (letzteKartePlusKarte && playedCard[0] != '+') {
     sendError(socketID, "MustDraw");
     return;
@@ -1883,18 +1870,14 @@ void handleSelectCard(uint8_t socketID, StaticJsonDocument<256>& doc) {
       return;
   }
 
-  // ===== Karte aus Hand entfernen =====
   for (uint8_t i = cardIndex; i < players[index].handSize - 1; i++) {
     players[index].hand[i] = players[index].hand[i + 1];
   }
   players[index].handSize--;
 
-  // ===== Ablagestapel =====
   discardPile[discardPileSize++] = playedCard;
 
-  // ===== Spezialkarten =====
   if (playedCard[0] == 'S') {
-    // Skip → Spieler überspringen
     if (!wishVar.is<int>()) {
       sendError(socketID, "TargetMissing");
       return;
@@ -1908,7 +1891,6 @@ void handleSelectCard(uint8_t socketID, StaticJsonDocument<256>& doc) {
   }
 
   if (playedCard[0] == 'R') {
-    // Reverse → Richtung wechseln
     uhrzeigersinn = !uhrzeigersinn;
   }
 
@@ -1934,11 +1916,9 @@ void handleSelectCard(uint8_t socketID, StaticJsonDocument<256>& doc) {
     }
     aktuelleFarbe = color[0];
   } else {
-    // Nicht-Wild → Farbe zurücksetzen
     aktuelleFarbe = 0;
   }
 
-  // ===== Prüfen ob Spieler gewonnen hat =====
   if (players[index].handSize == 0) {
     resetDeck();
     for (uint8_t i = 0; i < playerCount; i++) {
@@ -1949,7 +1929,6 @@ void handleSelectCard(uint8_t socketID, StaticJsonDocument<256>& doc) {
     return;
   }
 
-  // ===== Eigene Hand zurücksenden =====
   StaticJsonDocument<256> res;
   res["type"] = "aktuelleHand";
   JsonArray arr = res.createNestedArray("listHand");
@@ -1960,10 +1939,8 @@ void handleSelectCard(uint8_t socketID, StaticJsonDocument<256>& doc) {
   serializeJson(res, msg);
   webSocket.sendTXT(socketID, msg);
 
-  // ===== Nächster Spieler =====
   nextMove();
 
-  // ===== Handgrößen broadcasten =====
   broadcast(BROADCAST_PLAYERHANDS);
   broadcast(BROADCAST_DECK);
 }
@@ -2057,7 +2034,7 @@ void DrawCard(uint8_t socketID, uint8_t amount) {
     if (players[index].handSize >= 24) break; // max Handgröße
 
     const char* card = drawRandomCard();
-    if (!card) break; // Deck leer
+    if (!card) break;
 
     players[index].hand[players[index].handSize++] = card;
   }
@@ -2151,7 +2128,6 @@ void handleJoin(uint8_t socketID, StaticJsonDocument<256>& doc) {
       playerCount++;
   }
 
-  // Bestätigung an Client
   StaticJsonDocument<128> res;
   res["type"] = "join_ok";
   res["playerNumber"] = number;
@@ -2167,7 +2143,7 @@ void handleJoin(uint8_t socketID, StaticJsonDocument<256>& doc) {
 
 
 void StartGame() {
-  // ===== Deck mischen =====
+
   for (uint8_t i = drawDeckSize - 1; i > 0; i--) {
     uint8_t j = random(i + 1);
     const char* tmp = drawDeck[i];
@@ -2175,16 +2151,14 @@ void StartGame() {
     drawDeck[j] = tmp;
   }
 
-  // ===== Karten an Spieler austeilen =====
   for (uint8_t i = 0; i < playerCount; i++) {
-    players[i].handSize = 0; // sicherstellen, dass Hand leer ist
+    players[i].handSize = 0;
     for (uint8_t j = 0; j < 7; j++) {
       const char* card = drawRandomCard();
       players[i].hand[j] = card;
       players[i].handSize++;
     }
 
-    // ===== Eigene Hand zurücksenden =====
     StaticJsonDocument<256> res;
     res["type"] = "aktuelleHand";
     JsonArray arr = res.createNestedArray("listHand");
@@ -2197,7 +2171,6 @@ void StartGame() {
     webSocket.sendTXT(players[i].socketID, msg);
   }
 
-  // ===== Erste Karte auf Ablagestapel legen (nur normale Karte) =====
   const char* firstCard = nullptr;
   do {
     firstCard = drawRandomCard();
@@ -2205,12 +2178,10 @@ void StartGame() {
 
   discardPile[discardPileSize++] = firstCard;
   
-  aktuelleFarbe = 0; // normale Karte → keine Farbe gesetzt
+  aktuelleFarbe = 0;
 
-  // ===== Handgrößen broadcasten =====
   broadcast(BROADCAST_PLAYERHANDS);
 
-  // ===== Spieler am Zug =====
   spielerAmZug = 0;
   updateSpielerZug(spielerAmZug);
 
@@ -2219,6 +2190,7 @@ void StartGame() {
 
 
 void updateSpielerZug(uint8_t num){
+  
   int8_t index = -1;
   for (uint8_t i = 0; i < playerCount; i++) {
     if (players[i].number == num) {
@@ -2250,49 +2222,44 @@ void updateSpielerZug(uint8_t num){
 
 
 const char* drawRandomCard() {
-    // If the draw deck is empty, refill it from discardPile (except top card)
-    if (drawDeckSize == 0) {
-        // Refill drawDeck with all cards from discardPile except the top card
-        uint8_t newDeckSize = discardPileSize - 1;
-        for (uint8_t i = 0; i < newDeckSize; i++) {
-            drawDeck[i] = discardPile[i];
-        }
 
-        drawDeckSize = newDeckSize;
-
-        // Shuffle the deck using Fisher-Yates
-        for (uint8_t i = drawDeckSize - 1; i > 0; i--) {
-            uint8_t j = random(i + 1);
-            const char* tmp = drawDeck[i];
-            drawDeck[i] = drawDeck[j];
-            drawDeck[j] = tmp;
-        }
-
-        // Keep top card on discardPile
-        discardPile[0] = discardPile[discardPileSize - 1];
-        discardPileSize = 1;
+  if (drawDeckSize == 0) {
+    uint8_t newDeckSize = discardPileSize - 1;
+    for (uint8_t i = 0; i < newDeckSize; i++) {
+      drawDeck[i] = discardPile[i];
     }
 
-    // Draw the last card in the logical deck
-    const char* card = drawDeck[drawDeckSize - 1];
-    drawDeckSize--;
+    drawDeckSize = newDeckSize;
 
-    return card;
-}
-
-
-void resetDeck() {
-    // Move all cards back into drawDeck
-    drawDeckSize = 108;           // full deck
-    discardPileSize = 0;          // discard is empty
-
-    // Optional: shuffle the deck
     for (uint8_t i = drawDeckSize - 1; i > 0; i--) {
         uint8_t j = random(i + 1);
         const char* tmp = drawDeck[i];
         drawDeck[i] = drawDeck[j];
         drawDeck[j] = tmp;
     }
+
+
+    discardPile[0] = discardPile[discardPileSize - 1];
+    discardPileSize = 1;
+  }
+  const char* card = drawDeck[drawDeckSize - 1];
+  drawDeckSize--;
+
+  return card;
+}
+
+
+void resetDeck() {
+
+  drawDeckSize = 108;
+  discardPileSize = 0;
+
+  for (uint8_t i = drawDeckSize - 1; i > 0; i--) {
+    uint8_t j = random(i + 1);
+    const char* tmp = drawDeck[i];
+    drawDeck[i] = drawDeck[j];
+    drawDeck[j] = tmp;
+  }
 }
 
 
@@ -2317,7 +2284,6 @@ void broadcast(BroadcastType type) {
     serializeJson(doc, msg);
     webSocket.broadcastTXT(msg);
   }
-
   else if (type == BROADCAST_READY) {
     StaticJsonDocument<256> doc;
     doc["type"] = "playersReady";
@@ -2333,7 +2299,6 @@ void broadcast(BroadcastType type) {
     serializeJson(doc, msg);
     webSocket.broadcastTXT(msg);
   }
-
   else if (type == BROADCAST_GAMESTART){
     StaticJsonDocument<64> doc;
     doc["type"] = "gameStart";
@@ -2342,7 +2307,6 @@ void broadcast(BroadcastType type) {
     serializeJson(doc, msg);
     webSocket.broadcastTXT(msg);
   }
-
   else if (type == BROADCAST_PLAYERHANDS){
     StaticJsonDocument<256> res;
     res["type"] = "aktuelleHandeSpieler";
@@ -2351,7 +2315,7 @@ void broadcast(BroadcastType type) {
 
     for (uint8_t i = 0; i < playerCount; i++) {
         JsonObject obj = arr.createNestedObject();
-        obj["id"] = players[i].number;      // oder socketID
+        obj["id"] = players[i].number;
         obj["handSize"] = players[i].handSize;
     }
 
@@ -2359,7 +2323,6 @@ void broadcast(BroadcastType type) {
     serializeJson(res, msg);
     webSocket.broadcastTXT(msg);
   }
-
   else if (type == BROADCAST_END) {
       int8_t index = -1;
       for (uint8_t i = 0; i < playerCount; i++) {
@@ -2379,7 +2342,6 @@ void broadcast(BroadcastType type) {
       serializeJson(res, msg);
       webSocket.broadcastTXT(msg);  
   }
-
   else if (type == BROADCAST_DECK) {
 
     StaticJsonDocument<128> res;
@@ -2421,36 +2383,24 @@ void broadcast(BroadcastType type) {
   }
 }
 
-
 // ===== HTTP Root Handler =====
 void handleRoot() {
   server.send_P(200, "text/html", index_html);
 }
 
-
 // ===== Setup =====
 void setup() {
   randomSeed(esp_random());
-//  Serial.begin(115200);
-//  Serial.end(); // direkt wieder schließen
-
 
   // WLAN Access Point starten
   WiFi.softAP(ssid, password);
-// Serial.println("WLAN gestartet: ESP32-UNO");
-//  Serial.println("IP-Adresse: " + WiFi.softAPIP().toString());
 
-  // HTTP Server konfigurieren
   server.on("/", handleRoot);
   server.begin();
 
-  // WebSocket Server starten
   webSocket.begin();
   webSocket.onEvent(webSocketEvent);
-
-//  Serial.println("Server & WebSocket laufen");
 }
-
 
 // ===== Loop =====
 void loop() {
