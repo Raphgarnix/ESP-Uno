@@ -1462,6 +1462,17 @@ enum BroadcastType {
   BROADCAST_RESTART
 };
 
+enum MsgType : uint8_t {
+  MSG_UNKNOWN,
+  MSG_JOIN,
+  MSG_READY,
+  MSG_DRAW,
+  MSG_SELECT,
+  MSG_FERTIG,
+  MSG_RESET,
+  MSG_NORESET
+};
+
 const char* drawDeck[108] = { 
     "0R", "0G", "0B", "0Y", 
     "1R", "1R", "1G", "1G", "1B", "1B", "1Y", "1Y", 
@@ -1522,6 +1533,8 @@ void removePlayer(uint8_t index);
 void broadcast(BroadcastType type);
 void DrawCard(uint8_t socketID, uint8_t amount);
 const char* drawRandomCard();
+MsgType getMsgType(const char* t);
+int8_t findPlayerBySocketID(uint8_t socketID);
 void StartGame();
 void handleJoin(uint8_t socketID, StaticJsonDocument<256>& doc);
 void handleReady(uint8_t socketID, StaticJsonDocument<256>& doc);
@@ -1562,62 +1575,65 @@ void nextMove() {
 
 
 // ===== WebSocket Event Handler =====
-void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
 
-  if (type == WStype_DISCONNECTED) {
+  switch (type) {
 
-    for (uint8_t i = 0; i < playerCount; i++) {
-      if (players[i].socketID == num) {
+    case WStype_DISCONNECTED: {
+      for (uint8_t i = 0; i < playerCount; i++) {
+        if (players[i].socketID == num) {
+          removePlayer(i);
 
-        removePlayer(i);
-        for (uint8_t j = 0; j < playerCount; j++) {
-          StaticJsonDocument<64> res;
-          res["type"] = "renumber";
-          res["playerNumber"] = players[j].number;
+          for (uint8_t j = 0; j < playerCount; j++) {
+            StaticJsonDocument<64> res;
+            res["type"] = "renumber";
+            res["playerNumber"] = players[j].number;
 
-          String msg;
-          serializeJson(res, msg);
-          webSocket.sendTXT(players[j].socketID, msg);
+            String msg;
+            serializeJson(res, msg);
+            webSocket.sendTXT(players[j].socketID, msg);
+          }
+
+          broadcast(BROADCAST_PLAYERS);
+          break;
         }
-
-        broadcast(BROADCAST_PLAYERS);
-        break;
       }
+      break;
     }
-  }
 
-  if (type != WStype_TEXT) return;
-  
-  StaticJsonDocument<256> doc;
-  DeserializationError err = deserializeJson(doc, payload, length);
+    case WStype_TEXT: {
+      StaticJsonDocument<256> doc;
+      if (deserializeJson(doc, payload, length)) return;
 
-  const char* msgType = doc["type"];
+      const char* msgType = doc["type"];
+      switch (getMsgType(msgType)) {
+        case MSG_JOIN:    handleJoin(num, doc); break;
+        case MSG_READY:   handleReady(num, doc); break;
+        case MSG_DRAW:    handleDraw(num, doc); break;
+        case MSG_SELECT:  handleSelectCard(num, doc); break;
+        case MSG_FERTIG:  handleFertig(num, doc); break;
+        case MSG_RESET:   handleReset(num, doc); break;
+        case MSG_NORESET: handleNoReset(num, doc); break;
+        default: break;
+      }
+      break;
+    }
 
-  if (!msgType) return;
+    default:
+      break;
+  }
+}
 
-  if (strcmp(msgType, "join") == 0) {
-    handleJoin(num, doc);
-  }
-
-  if (strcmp(msgType, "ready") == 0) {
-    handleReady(num, doc);
-  }
-
-  if (strcmp(msgType, "drawCard") == 0) {
-    handleDraw(num, doc);
-  }
-  if (strcmp(msgType, "selectCard") == 0) {
-    handleSelectCard(num, doc);
-  }
-  if (strcmp(msgType, "Fertig") == 0) {
-    handleFertig(num, doc);
-  }
-  if (strcmp(msgType, "Reset") == 0) {
-    handleReset(num, doc);
-  }
-  if (strcmp(msgType, "NoReset") == 0) {
-    handleNoReset(num, doc);
-  }
+MsgType getMsgType(const char* t) {
+  if (!t) return MSG_UNKNOWN;
+  if (!strcmp(t, "join"))       return MSG_JOIN;
+  if (!strcmp(t, "ready"))      return MSG_READY;
+  if (!strcmp(t, "drawCard"))   return MSG_DRAW;
+  if (!strcmp(t, "selectCard")) return MSG_SELECT;
+  if (!strcmp(t, "Fertig"))     return MSG_FERTIG;
+  if (!strcmp(t, "Reset"))      return MSG_RESET;
+  if (!strcmp(t, "NoReset"))    return MSG_NORESET;
+  return MSG_UNKNOWN;
 }
 
 void handleNoReset(uint8_t socketID, StaticJsonDocument<256>& doc) {
@@ -1689,9 +1705,6 @@ void ResetGame() {
   playerCount = 0;
   viewerCount = 0;
 }
-
-
-
 
 void removePlayer(uint8_t index) {
   
@@ -1765,7 +1778,6 @@ void sendError(uint8_t socketID, const char* msg) {
   
   webSocket.sendTXT(socketID, msg);
 }
-
 
 void handleSelectCard(uint8_t socketID, StaticJsonDocument<256>& doc) {
 
@@ -1883,41 +1895,39 @@ void handleSelectCard(uint8_t socketID, StaticJsonDocument<256>& doc) {
   broadcast(BROADCAST_DECK);
 }
 
-
-
 bool isCardPlayable(const char* lastCard, const char* playedCard) {
 
-    // +4 Wild can always be played
-    if (strcmp(playedCard, "+4W") == 0) return true;
+  // +4 Wild can always be played
+  if (strcmp(playedCard, "+4W") == 0) return true;
 
-    // Standard Wild can always be played unless forced to draw
-    if (strcmp(playedCard, "W") == 0) {
-        return !letzteKartePlusKarte;
-    }
+  // Standard Wild can always be played unless forced to draw
+  if (strcmp(playedCard, "W") == 0) {
+    return !letzteKartePlusKarte;
+  }
 
-    // Get last card color and type
-    char lastType = lastCard[0]; // number or letter (S, R, +)
-    char lastColor = lastCard[strlen(lastCard) - 1];
+  // Get last card color and type
+  char lastType = lastCard[0]; // number or letter (S, R, +)
+  char lastColor = lastCard[strlen(lastCard) - 1];
 
-    // If a color has been chosen by Wild, that overrides last card color
-    if (aktuelleFarbe != 0) lastColor = aktuelleFarbe;
+  // If a color has been chosen by Wild, that overrides last card color
+  if (aktuelleFarbe != 0) lastColor = aktuelleFarbe;
 
-    // Played card type and color
-    char playType = playedCard[0];
-    char playColor = playedCard[strlen(playedCard) - 1];
+  // Played card type and color
+  char playType = playedCard[0];
+  char playColor = playedCard[strlen(playedCard) - 1];
 
-    // +2 stacking
-    if (playType == '+' && playedCard[1] == '2') {
-        if (letzteKartePlusKarte && lastCard[0] == '+' && lastCard[1] == '2') return true;
-        if (playColor == lastColor) return true;
-        if (lastCard[0] == '+' && lastCard[1] == '2') return true;
-        return false;
-    }
-
-    // Skip / Reverse / number cards
-    if (playColor == lastColor || playType == lastType) return true;
-
+  // +2 stacking
+  if (playType == '+' && playedCard[1] == '2') {
+    if (letzteKartePlusKarte && lastCard[0] == '+' && lastCard[1] == '2') return true;
+    if (playColor == lastColor) return true;
+    if (lastCard[0] == '+' && lastCard[1] == '2') return true;
     return false;
+  }
+
+  // Skip / Reverse / number cards
+  if (playColor == lastColor || playType == lastType) return true;
+
+  return false;
 }
 
 
@@ -1950,13 +1960,8 @@ void handleDraw(uint8_t socketID, StaticJsonDocument<256>& doc) {
 
 
 void DrawCard(uint8_t socketID, uint8_t amount) {
-  int8_t index = -1;
-  for (uint8_t i = 0; i < playerCount; i++) {
-    if (players[i].socketID == socketID) { 
-      index = i; 
-      break; 
-    }
-  }
+  
+  int8_t index = findPlayerBySocketID(socketID);
   if (index == -1) return;
 
   for (uint8_t i = 0; i < amount; i++) {
@@ -2027,24 +2032,24 @@ void handleJoin(uint8_t socketID, StaticJsonDocument<256>& doc) {
   }
 
   if (gamestarted) {
-      // Viewer
-      viewers[viewerCount].socketID = socketID;
-      strncpy(viewers[viewerCount].name, username, 15);
-      viewers[viewerCount].name[15] = '\0';
-      viewers[viewerCount].number = viewerCount;
+    // Viewer
+    viewers[viewerCount].socketID = socketID;
+    strncpy(viewers[viewerCount].name, username, 15);
+    viewers[viewerCount].name[15] = '\0';
+    viewers[viewerCount].number = viewerCount;
 
-      number = viewerCount;
-      viewerCount++;
+    number = viewerCount;
+    viewerCount++;
   }
   else {
-      // Player
-      players[playerCount].socketID = socketID;
-      strncpy(players[playerCount].name, username, 15);
-      players[playerCount].name[15] = '\0';
-      players[playerCount].number = playerCount;
+    // Player
+    players[playerCount].socketID = socketID;
+    strncpy(players[playerCount].name, username, 15);
+    players[playerCount].name[15] = '\0';
+    players[playerCount].number = playerCount;
 
-      number = playerCount;
-      playerCount++;
+    number = playerCount;
+    playerCount++;
   }
 
   StaticJsonDocument<128> res;
@@ -2151,10 +2156,10 @@ const char* drawRandomCard() {
     drawDeckSize = newDeckSize;
 
     for (uint8_t i = drawDeckSize - 1; i > 0; i--) {
-        uint8_t j = random(i + 1);
-        const char* tmp = drawDeck[i];
-        drawDeck[i] = drawDeck[j];
-        drawDeck[j] = tmp;
+      uint8_t j = random(i + 1);
+      const char* tmp = drawDeck[i];
+      drawDeck[i] = drawDeck[j];
+      drawDeck[j] = tmp;
     }
 
 
@@ -2243,23 +2248,23 @@ void broadcast(BroadcastType type) {
     webSocket.broadcastTXT(msg);
   }
   else if (type == BROADCAST_END) {
-      int8_t index = -1;
-      for (uint8_t i = 0; i < playerCount; i++) {
-          if (players[i].handSize == 0) {
-              index = i;
-              break;
-          }
+    int8_t index = -1;
+    for (uint8_t i = 0; i < playerCount; i++) {
+      if (players[i].handSize == 0) {
+        index = i;
+        break;
       }
-      if(index == -1) return;
+    }
+    if(index == -1) return;
 
-      StaticJsonDocument<128> res;
-      
-      res["type"] = "gameEnd";
-      res["winner"] = players[index].name;
+    StaticJsonDocument<128> res;
+    
+    res["type"] = "gameEnd";
+    res["winner"] = players[index].name;
 
-      String msg;
-      serializeJson(res, msg);
-      webSocket.broadcastTXT(msg);  
+    String msg;
+    serializeJson(res, msg);
+    webSocket.broadcastTXT(msg);  
   }
   else if (type == BROADCAST_DECK) {
 
@@ -2278,9 +2283,9 @@ void broadcast(BroadcastType type) {
     }
     res["who"] = spieler; 
 
-      String msg;
-      serializeJson(res, msg);
-      webSocket.broadcastTXT(msg);  
+    String msg;
+    serializeJson(res, msg);
+    webSocket.broadcastTXT(msg);  
   }
   else if (type ==  BROADCAST_RESET) {
 
