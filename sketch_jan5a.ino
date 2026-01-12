@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <LittleFS.h>
 #include <WebServer.h>
 #include <WebSocketsServer.h>
 #include <ArduinoJson.h>
@@ -1470,7 +1471,8 @@ enum MsgType : uint8_t {
   MSG_SELECT,
   MSG_FERTIG,
   MSG_RESET,
-  MSG_NORESET
+  MSG_NORESET,
+  MSG_DATAREQ
 };
 
 const char* drawDeck[108] = { 
@@ -1540,8 +1542,12 @@ void handleJoin(uint8_t socketID, StaticJsonDocument<256>& doc);
 void handleReady(uint8_t socketID, StaticJsonDocument<256>& doc);
 void handleDraw(uint8_t socketID, StaticJsonDocument<256>& doc);
 void handleSelectCard(uint8_t socketID, StaticJsonDocument<256>& doc);
+void handleDATAREQ(uint8_t socketID, StaticJsonDocument<256>& doc);
 bool isCardPlayable(const char* lastCard, const char* playedCard);
+bool saveStats(StaticJsonDocument<1024> &doc);
+bool loadStats(StaticJsonDocument<1024> &doc);
 void resetDeck();
+void saveStatsAfterGame();
 void checkIfAllReady();
 void updateSpielerZug(uint8_t num);
 void checkIfAllAreForReset();
@@ -1614,6 +1620,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length)
         case MSG_FERTIG:  handleFertig(num, doc); break;
         case MSG_RESET:   handleReset(num, doc); break;
         case MSG_NORESET: handleNoReset(num, doc); break;
+        case MSG_DATAREQ: handleDATAREQ(num, doc); break;
         default: break;
       }
       break;
@@ -1633,6 +1640,7 @@ MsgType getMsgType(const char* t) {
   if (!strcmp(t, "Fertig"))     return MSG_FERTIG;
   if (!strcmp(t, "Reset"))      return MSG_RESET;
   if (!strcmp(t, "NoReset"))    return MSG_NORESET;
+  if (!strcmp(t, "DataRequest"))return MSG_DATAREQ;
   return MSG_UNKNOWN;
 }
 
@@ -2264,7 +2272,8 @@ void broadcast(BroadcastType type) {
 
     String msg;
     serializeJson(res, msg);
-    webSocket.broadcastTXT(msg);  
+    webSocket.broadcastTXT(msg);
+    saveStatsAfterGame();
   }
   else if (type == BROADCAST_DECK) {
 
@@ -2317,6 +2326,121 @@ int8_t findPlayerBySocketID(uint8_t socketID) {
   return -1;
 }
 
+bool loadStats(StaticJsonDocument<1024> &doc) {
+  if (!LittleFS.begin(true)) return false;
+
+  if (!LittleFS.exists("/stats.json")) return false;
+
+  File file = LittleFS.open("/stats.json", "r");
+  if (!file) return false;
+
+  DeserializationError error = deserializeJson(doc, file);
+  file.close();
+
+  return !error;
+}
+
+bool saveStats(StaticJsonDocument<1024> &doc) {
+  File file = LittleFS.open("/stats.json", "w");
+  if (!file) return false;
+
+  serializeJson(doc, file);
+  file.close();
+  return true;
+}
+
+void handleDATAREQ(uint8_t socketID, StaticJsonDocument<256>& doc) {
+
+  int8_t index = findPlayerBySocketID(socketID);
+  if (index == -1) return;
+
+  if (!doc["usernumber"].is<int>()) return;
+  int8_t playerNumber = doc["usernumber"];
+  if (playerNumber < 0 || playerNumber >= playerCount) return;
+
+  const char* playerName = players[playerNumber].name;
+  if (!playerName || playerName[0] == '\0') return;
+
+  StaticJsonDocument<1024> statsDoc;
+  loadStats(statsDoc);
+
+  const char* exists = "no";
+  int wins = 0;
+  int losses = 0;
+
+  if (statsDoc.containsKey("players")) {
+      JsonArray playersArr = statsDoc["players"].as<JsonArray>();
+      for (JsonObject p : playersArr) {
+          if (strcmp(p["name"], playerName) == 0) {
+              exists = "yes";
+              wins = p["wins"] | 0;
+              losses = p["losses"] | 0;
+              break;
+          }
+      }
+  }
+
+  StaticJsonDocument<256> res;
+  res["type"] = "RequestedData";
+  res["exists"] = exists;
+  res["wins"] = wins;
+  res["losses"] = losses;
+
+  String msg;
+  serializeJson(res, msg);
+  webSocket.sendTXT(socketID, msg);
+}
+
+
+void saveStatsAfterGame() {
+  
+  StaticJsonDocument<1024> doc;
+
+  if (!loadStats(doc)) {
+    doc.clear();
+  }
+
+  JsonArray playersArr;
+  if (doc.containsKey("players")) {
+    playersArr = doc["players"].as<JsonArray>();
+  } else {
+    playersArr = doc.createNestedArray("players");
+  }
+
+  for (uint8_t i = 0; i < playerCount; i++) {
+
+    const char* pname = players[i].name;
+    if (!pname || pname[0] == '\0') continue;
+
+    bool isWinner = (players[i].handSize == 0);
+    bool found = false;
+
+    for (JsonObject p : playersArr) {
+      if (strcmp(p["name"], pname) == 0) {
+
+        if (isWinner) {
+          p["wins"] = (p["wins"] | 0) + 1;
+        } else {
+          p["losses"] = (p["losses"] | 0) + 1;
+        }
+
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      JsonObject newPlayer = playersArr.createNestedObject();
+      newPlayer["name"] = pname;
+      newPlayer["wins"] = isWinner ? 1 : 0;
+      newPlayer["losses"] = isWinner ? 0 : 1;
+    }
+  }
+
+  saveStats(doc);
+}
+
+
+
 // ===== HTTP Root Handler =====
 void handleRoot() {
   server.send_P(200, "text/html", index_html);
@@ -2326,7 +2450,6 @@ void handleRoot() {
 void setup() {
   randomSeed(esp_random());
 
-  // WLAN Access Point starten
   WiFi.softAP(ssid, password);
 
   server.on("/", handleRoot);
@@ -2334,6 +2457,18 @@ void setup() {
 
   webSocket.begin();
   webSocket.onEvent(webSocketEvent);
+
+  if (!LittleFS.begin(true)) {
+    return;
+  }
+
+  if (!LittleFS.exists("/stats.json")) {
+    File file = LittleFS.open("/stats.json", "w");
+    if (file) {
+      file.println("{\"players\":[]}");
+      file.close();
+    }
+  }
 }
 
 // ===== Loop =====
