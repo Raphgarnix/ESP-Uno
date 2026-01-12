@@ -1044,8 +1044,18 @@ document.addEventListener("DOMContentLoaded", function() {
           ws.close();
           connectWebSocket();
           break;
-        
-      default: console.log("Message:", data); break;
+    
+    case "RequestedData":
+        if (data.exists === "no") {
+            console.warn("Player data not found.");
+        } 
+        else {
+            console.log("Player data received:", data);
+            const name = data.name;
+            const wins = data.wins;
+            const losses = data.losses;
+            displayPlayerStats(name, wins, losses);
+        }
     }
   }
 
@@ -1205,7 +1215,9 @@ document.addEventListener("DOMContentLoaded", function() {
 
       const ready = playersReady.includes(player);
       playerEl.textContent = `Player ${index}: ${player} ${ready ? "✅ Ready" : "❌ Not Ready"}`;
-
+        playerEl.onclick = () => {
+          LookAtStatsOfAPlayer(index);
+        };
       readyupPlayers.appendChild(playerEl);
 
       const playerlineEl = document.createElement("hr");
@@ -1375,6 +1387,36 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("colorSelectPanelOverlay").style.display = "none";
     document.getElementById("colorSelectPanel").style.display = "none";
   }
+
+  function displayPlayerStats(name, wins, losses) {
+    const panel = document.getElementById("playerStatsPanel");
+    const statsContent = document.getElementById("playerStatsContent");
+    const overlay = document.getElementById("DisplayStatsOverlay");
+    const closeDisplayStatsButton = document.getElementById("closeDisplayStatsButton"); 
+    closeDisplayStatsButton.onclick = closeDisplayStatsPanel;
+    
+    statsContent.innerHTML = `
+      <h2>Player Stats</h2>
+      <p>Name: ${name}</p>
+      <p>Wins: ${wins}</p>
+      <p>Losses: ${losses}</p>
+    `;
+
+    overlay.style.display = "block";
+    panel.style.display = "block";
+  }
+
+    function closeDisplayStatsPanel() {
+        document.getElementById("DisplayStatsOverlay").style.display = "none";
+        document.getElementById("playerStatsPanel").style.display = "none";
+    }
+
+  window.LookAtStatsOfAPlayer = function(index) {
+    ws.send(JSON.stringify({
+      type: "lookAtStats",
+      usernumber: index
+    }));
+  };
 
   function SelectColor(cardIndex, color) {
     window.DropCard(cardIndex, color);
