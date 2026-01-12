@@ -513,6 +513,63 @@ button {
 #colorSelectPanel .cancel-btn:hover {
     background-color: #ff6a6a;
 }
+//7777777777777777777777777777777777777
+#DisplayStatsOverlay {
+    display: none;
+    position: fixed;
+    top:0; left:0;
+    width:100vw; height:100vh;
+    background: rgba(0,0,0,0.6);
+    z-index: 999;
+}
+
+#playerStatsPanel {
+    display: none;
+    position: fixed;
+    top:50%; left:50%;
+    transform: translate(-50%, -50%);
+    background: #1e1e2f;
+    color: #fff;
+    padding: 25px 30px;
+    border-radius: 12px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+    text-align: center;
+    z-index: 1000;
+    min-width: 280px;
+    font-family: Arial, sans-serif;
+}
+
+#playerStatsContent {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+#playerStatsContent button {
+    padding: 8px 15px;
+    border: none;
+    border-radius: 8px;
+    background-color: #4a4aff;
+    color: white;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s, transform 0.2s;
+}
+
+#playerStatsContent button:hover {
+    background-color: #6565ff;
+    transform: scale(1.05);
+}
+
+#playerStatsPanel .cancel-btn {
+    background-color: #ff4a4a;
+}
+
+#playerStatsPanel .cancel-btn:hover {
+    background-color: #ff6a6a;
+}
+
 
 /* Container für alle Spieler */
 #opponentCards {
@@ -774,6 +831,13 @@ button {
     <div id="colorSelectTitle">Choose a color</div>
     <div id="colorButtons"></div>
     <button class="cancel-btn" id="closeColorSelectButton">Cancel</button>
+  </div>
+
+  <div id="DisplayStatsOverlay" onclick="closeDisplayStatsPanel()"></div>
+
+  <div id="playerStatsPanel">
+    <div id="playerStatsContent"></div>
+    <button class="cancel-btn" id="closeDisplayStatsButton">Cancel</button>
   </div>
 
   <button id="topRightButton" class="top-right-btn" title="Reset / Menu" onclick="ChangeResetAll()">⟳</button>
